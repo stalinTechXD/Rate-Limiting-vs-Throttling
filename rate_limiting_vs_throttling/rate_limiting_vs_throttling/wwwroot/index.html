@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Rate Limiting vs Throttling Demo</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 2rem; background: #f5f6f8; }
+  h1 { margin-bottom: 0.2rem; }
+  p.sub { color: #555; margin-top: 0; }
+  .columns { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 320px; background: #fff; border-radius: 8px; padding: 1rem 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+  .card h2 { margin-top: 0; }
+  button { padding: 0.5rem 1rem; border: none; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; font-size: 0.95rem; }
+  button:hover { background: #1d4ed8; }
+  .stats { margin: 0.5rem 0; font-size: 0.9rem; color: #333; }
+  .log { max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #eee; }
+  tr.ok td.status { color: #16a34a; font-weight: 600; }
+  tr.rejected td.status { color: #dc2626; font-weight: 600; }
+  tr.error td.status { color: #dc2626; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Rate Limiting vs Throttling</h1>
+  <p class="sub">
+    <b>Rate limiting</b> (fixed window, 5 req / 10s, no queue): extra requests are rejected instantly with 429.<br />
+    <b>Throttling</b> (concurrency limiter, 2 concurrent, queue of 20): extra requests wait in line and complete slower instead of failing.
+  </p>
+
+  <div class="columns">
+    <div class="card">
+      <h2>Rate Limited endpoint</h2>
+      <button onclick="fireBurst('rate-limited', 'rateLog', 'rateStats')">Fire 10 requests at once</button>
+      <div class="stats" id="rateStats"></div>
+      <div class="log"><table><thead><tr><th>#</th><th>Status</th><th>Latency (ms)</th><th>Detail</th></tr></thead><tbody id="rateLog"></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Throttled endpoint</h2>
+      <button onclick="fireBurst('throttled', 'throttleLog', 'throttleStats')">Fire 10 requests at once</button>
+      <div class="stats" id="throttleStats"></div>
+      <div class="log"><table><thead><tr><th>#</th><th>Status</th><th>Latency (ms)</th><th>Detail</th></tr></thead><tbody id="throttleLog"></tbody></table></div>
+    </div>
+  </div>
+
+<script>
+async function fireBurst(endpoint, logId, statsId) {
+  const logBody = document.getElementById(logId);
+  const stats = document.getElementById(statsId);
+  logBody.innerHTML = '';
+  stats.textContent = 'Running...';
+
+  const total = 10;
+  const results = new Array(total);
+  const start = performance.now();
+
+  const requests = Array.from({ length: total }, (_, i) => {
+    const reqStart = performance.now();
+    return fetch(`/api/demo/${endpoint}`)
+      .then(async (res) => {
+        const latency = Math.round(performance.now() - reqStart);
+        let detail = '';
+        try {
+          const body = await res.json();
+          detail = body.message ?? JSON.stringify(body);
+        } catch { detail = res.statusText; }
+        results[i] = { index: i + 1, status: res.status, latency, detail, ok: res.ok };
+      })
+      .catch((err) => {
+        const latency = Math.round(performance.now() - reqStart);
+        results[i] = { index: i + 1, status: 'ERR', latency, detail: String(err), ok: false };
+      });
+  });
+
+  await Promise.all(requests);
+  const totalTime = Math.round(performance.now() - start);
+
+  results
+    .sort((a, b) => a.index - b.index)
+    .forEach((r) => {
+      const tr = document.createElement('tr');
+      tr.className = r.status === 200 ? 'ok' : (r.status === 429 ? 'rejected' : 'error');
+      tr.innerHTML = `<td>${r.index}</td><td class="status">${r.status}</td><td>${r.latency}</td><td>${r.detail}</td>`;
+      logBody.appendChild(tr);
+    });
+
+  const succeeded = results.filter((r) => r.status === 200).length;
+  const rejected = results.filter((r) => r.status === 429).length;
+  stats.textContent = `Total time: ${totalTime} ms | Succeeded: ${succeeded} | Rejected (429): ${rejected}`;
+}
+</script>
+</body>
+</html>

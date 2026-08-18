@@ -1,0 +1,24 @@
+@rate_limiting_vs_throttling_HostAddress = http://localhost:5066
+
+GET {{rate_limiting_vs_throttling_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+# Rate limiting demo: fire this repeatedly (>5 times within 10s) to see 429 responses.
+GET {{rate_limiting_vs_throttling_HostAddress}}/api/demo/rate-limited
+Accept: application/json
+
+###
+
+# Throttling demo: fire this repeatedly; requests queue and complete slower instead of failing.
+GET {{rate_limiting_vs_throttling_HostAddress}}/api/demo/throttled
+Accept: application/json
+
+###
+
+# Baseline, no limiting applied.
+GET {{rate_limiting_vs_throttling_HostAddress}}/api/demo/unlimited
+Accept: application/json
+
+###
